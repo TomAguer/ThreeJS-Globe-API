@@ -2,7 +2,9 @@ import * as THREE from '../../node_modules/three/build/three.module.js';
 
 //Utilisation de chat GPT pour la création des marqueurs, requete : "créé moi des marqueurs en fonction de la longitude et latitude de ma bdd, ils seront plus ou moins gros en fonction de la population (ajout des scripts location.php et globe3.js)"
 
-//Utilisation de ChatGPT pour la création du tooltip : "Créé moi une petite page d'information au survol en fonction des données de ma bdd lorsque je passe ma souris sur des marqueurs"
+//Utilisation de ChatGPT pour la création du tooltip et la mise en place du filtre: "Créé moi une petite page d'information au survol en fonction des données de ma bdd lorsque je passe ma souris sur des marqueurs, ajoute également une option de filtre en contion de la population"
+
+
 
 // Variables globales pour le contrôle
 let autoRotate = true;
