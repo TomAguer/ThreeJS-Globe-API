@@ -35,6 +35,9 @@ controlPanel.innerHTML = `
     <div id="stats" style="font-size: 12px; margin-top: 10px; border-top: 1px solid white; padding-top: 10px;">
         Villes affichées: 0
     </div>
+    <button id="fullscreenButton" style="width: 100%; margin-top: 10px; padding: 5px; border-radius: 5px; border: none; cursor: pointer;">
+        Plein écran
+    </button>
 `;
 document.body.appendChild(controlPanel);
 
@@ -315,6 +318,26 @@ function resetInactivityTimer() {
         }
     }, 5000); // Réactive la rotation après 5 secondes d'inactivité
 }
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Fonction pour gérer le mode plein écran
+function toggleFullScreen() {
+  if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+          console.log(`Erreur lors du passage en plein écran : ${err.message}`);
+      });
+  } else {
+      document.exitFullscreen();
+  }
+}
+
+// Gestionnaire d'événement pour le bouton plein écran
+document.getElementById('fullscreenButton').addEventListener('click', toggleFullScreen);
 
 window.addEventListener('mousemove', resetInactivityTimer);
 window.addEventListener('mousedown', resetInactivityTimer);
