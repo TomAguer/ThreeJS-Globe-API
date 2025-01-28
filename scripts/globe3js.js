@@ -9,6 +9,34 @@ let autoRotate = true;
 let selectedMarker = null;
 let rotationSpeed = 0.001;
 let isTooltipLocked = false;
+let activeFilters = {
+    population: 0
+};
+
+// Création du panneau de contrôle
+const controlPanel = document.createElement('div');
+controlPanel.style.position = 'absolute';
+controlPanel.style.top = '20px';
+controlPanel.style.right = '20px';
+controlPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+controlPanel.style.padding = '15px';
+controlPanel.style.borderRadius = '10px';
+controlPanel.style.color = 'white';
+controlPanel.style.zIndex = '1000';
+controlPanel.innerHTML = `
+    <div style="margin-bottom: 15px;">
+        <h3 style="margin: 0 0 10px 0;">Filtre par population</h3>
+        <div>
+            <label>Population minimale :</label>
+            <input type="range" id="populationFilter" min="0" max="30000000" step="1000000" value="0" style="width: 100%;">
+            <div id="populationValue" style="text-align: center;">0</div>
+        </div>
+    </div>
+    <div id="stats" style="font-size: 12px; margin-top: 10px; border-top: 1px solid white; padding-top: 10px;">
+        Villes affichées: 0
+    </div>
+`;
+document.body.appendChild(controlPanel);
 
 // On crée un tooltip HTML en créant une div pour afficher les informations au survol du marqueur
 const tooltip = document.createElement('div');
@@ -48,6 +76,33 @@ function latLongToVector3(lat, long, radius) {
 function formatNumber(num) {
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
+
+// Fonction pour appliquer les filtres
+function applyFilters() {
+    let visibleCount = 0;
+    markersGroup.children.forEach(marker => {
+        const location = marker.userData;
+        const populationMatch = location.population >= activeFilters.population;
+        marker.visible = populationMatch;
+        if (marker.visible) visibleCount++;
+    });
+
+    document.getElementById('stats').textContent = `Villes affichées: ${visibleCount}`;
+
+    if (selectedMarker && !selectedMarker.visible) {
+        isTooltipLocked = false;
+        selectedMarker = null;
+        tooltip.style.display = 'none';
+    }
+}
+
+// Gestionnaire d'événement pour le filtre de population
+document.getElementById('populationFilter').addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    activeFilters.population = value;
+    document.getElementById('populationValue').textContent = formatNumber(value);
+    applyFilters();
+});
 
 // Fonction pour créer un marqueur
 function createMarker(location) {
@@ -144,6 +199,7 @@ async function loadLocations() {
             markersGroup.add(marker);
         });
 
+        applyFilters();
         console.log('Marqueurs ajoutés avec succès');
     } catch (error) {
         console.error('Erreur:', error);
@@ -174,12 +230,10 @@ window.addEventListener('click', (event) => {
         const marker = intersects[0].object;
 
         if (selectedMarker === marker) {
-            // Déverrouillage
             isTooltipLocked = false;
             selectedMarker = null;
             highlightMarker(marker, false);
         } else {
-            // Verrouillage
             if (selectedMarker) {
                 highlightMarker(selectedMarker, false);
             }
@@ -189,7 +243,6 @@ window.addEventListener('click', (event) => {
             updateTooltip(event, marker.userData);
         }
     } else if (!intersects.length && isTooltipLocked) {
-        // Clic en dehors d'un marqueur
         isTooltipLocked = false;
         highlightMarker(selectedMarker, false);
         selectedMarker = null;
@@ -197,26 +250,36 @@ window.addEventListener('click', (event) => {
     }
 });
 
-window.addEventListener('mousedown', () => isDragging = true);
-window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mousedown', (event) => {
+    // Vérifie si le clic est sur le panneau de contrôle
+    if (!controlPanel.contains(event.target)) {
+        isDragging = true;
+    }
+});
+
+window.addEventListener('mouseup', () => {
+    isDragging = false;
+});
+
 window.addEventListener('mousemove', (event) => {
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
-    if (isDragging) {
+    // Ne faire tourner le globe que si on ne clique pas sur le panneau de contrôle
+    if (isDragging && !controlPanel.contains(event.target)) {
         const deltaMove = {
             x: event.clientX - previousMousePosition.x,
             y: event.clientY - previousMousePosition.y
         };
         sphere.rotation.y += deltaMove.x * 0.005;
         sphere.rotation.x += deltaMove.y * 0.005;
-        autoRotate = false; // Désactive la rotation automatique lors du drag
+        autoRotate = false;
     } else {
         raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(markersGroup.children);
+        const intersects = raycaster.intersectObjects(markersGroup.children.filter(marker => marker.visible));
 
         markersGroup.children.forEach(marker => {
-            if (marker !== selectedMarker) {
+            if (marker !== selectedMarker && marker.visible) {
                 highlightMarker(marker, false);
             }
         });
