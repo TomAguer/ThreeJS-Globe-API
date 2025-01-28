@@ -4,6 +4,12 @@ import * as THREE from '../../node_modules/three/build/three.module.js';
 
 //Utilisation de ChatGPT pour la création du tooltip : "Créé moi une petite page d'information au survol en fonction des données de ma bdd lorsque je passe ma souris sur des marqueurs"
 
+// Variables globales pour le contrôle
+let autoRotate = true;
+let selectedMarker = null;
+let rotationSpeed = 0.001;
+let isTooltipLocked = false;
+
 // On crée un tooltip HTML en créant une div pour afficher les informations au survol du marqueur
 const tooltip = document.createElement('div');
 tooltip.style.position = 'absolute';
@@ -16,6 +22,7 @@ tooltip.style.fontFamily = 'Arial, sans-serif';
 tooltip.style.display = 'none';
 tooltip.style.zIndex = '1000';
 tooltip.style.pointerEvents = 'none';
+tooltip.style.cursor = 'pointer';
 document.body.appendChild(tooltip);
 
 // On initialise la scène en créant une caméra avec une vue 3D et un champ de vision de 75°, le moteur webGL affiche la scene sur la page web
@@ -55,8 +62,25 @@ function createMarker(location) {
         transparent: true
     });
     const marker = new THREE.Mesh(geometry, material);
-    marker.userData = location; //On insère dans user data les informations de notre BDD
+    marker.userData = {
+        ...location,
+        originalScale: size,
+        originalColor: 0xff0000
+    };
     return marker;
+}
+
+// Fonction pour gérer la surbrillance des marqueurs
+function highlightMarker(marker, highlight = true) {
+    if (!marker) return;
+
+    if (highlight) {
+        marker.material.color.setHex(0xffff00);
+        marker.scale.set(1.3, 1.3, 1.3);
+    } else {
+        marker.material.color.setHex(marker.userData.originalColor);
+        marker.scale.set(1, 1, 1);
+    }
 }
 
 // On créé une sphère géometrique à laquelle on ajoute la texture globe.jpg récupérée sur le site de la nasa
@@ -77,30 +101,19 @@ const mouse = new THREE.Vector2();
 
 // Fonction de mise à jour du tooltip avec indentation particulière, on utilise les données de la bdd stockée dans location
 function updateTooltip(event, location) {
-    tooltip.style.left = `${event.clientX + 15}px`;
-    tooltip.style.top = `${event.clientY + 15}px`;
-    tooltip.innerHTML = `
-        🏙️ Capitale: ${location.name}<br>
-        🌍 Pays: ${location.countryname}<br>
-        📍 Coordonnées: ${location.latitude.toFixed(2)}°, ${location.longitude.toFixed(2)}°<br>
-        👥 Population: ${formatNumber(location.population)}
-    `;
-    tooltip.style.display = 'block';
-}
-
-// Gestionnaire d'événements souris, on met a jour la position du raycast et on affiche le tooltip si un marqueur est survolé sinon on n'affiche rien
-function onMouseMove(event) {
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(markersGroup.children);
-
-    if (intersects.length > 0) {
-        const marker = intersects[0].object;
-        updateTooltip(event, marker.userData);
-    } else {
-        tooltip.style.display = 'none';
+    if (!isTooltipLocked || selectedMarker?.userData === location) {
+        tooltip.style.left = `${event.clientX + 15}px`;
+        tooltip.style.top = `${event.clientY + 15}px`;
+        tooltip.innerHTML = `
+            🏙️ Capitale: ${location.name}<br>
+            🌍 Pays: ${location.countryname}<br>
+            📍 Coordonnées: ${location.latitude.toFixed(2)}°, ${location.longitude.toFixed(2)}°<br>
+            👥 Population: ${formatNumber(location.population)}
+            <div id="lockStatus" style="font-size: 12px; margin-top: 5px;">
+                ${isTooltipLocked ? '(Cliquez pour déverrouiller)' : '(Cliquez pour verrouiller)'}
+            </div>
+        `;
+        tooltip.style.display = 'block';
     }
 }
 
@@ -152,9 +165,44 @@ scene.add(ambientLight);
 let isDragging = false;
 let previousMousePosition = {x: 0, y: 0};
 
+// Gestionnaire de clic pour le verrouillage du tooltip
+window.addEventListener('click', (event) => {
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(markersGroup.children);
+
+    if (intersects.length > 0) {
+        const marker = intersects[0].object;
+
+        if (selectedMarker === marker) {
+            // Déverrouillage
+            isTooltipLocked = false;
+            selectedMarker = null;
+            highlightMarker(marker, false);
+        } else {
+            // Verrouillage
+            if (selectedMarker) {
+                highlightMarker(selectedMarker, false);
+            }
+            isTooltipLocked = true;
+            selectedMarker = marker;
+            highlightMarker(marker, true);
+            updateTooltip(event, marker.userData);
+        }
+    } else if (!intersects.length && isTooltipLocked) {
+        // Clic en dehors d'un marqueur
+        isTooltipLocked = false;
+        highlightMarker(selectedMarker, false);
+        selectedMarker = null;
+        tooltip.style.display = 'none';
+    }
+});
+
 window.addEventListener('mousedown', () => isDragging = true);
 window.addEventListener('mouseup', () => isDragging = false);
 window.addEventListener('mousemove', (event) => {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
     if (isDragging) {
         const deltaMove = {
             x: event.clientX - previousMousePosition.x,
@@ -162,8 +210,28 @@ window.addEventListener('mousemove', (event) => {
         };
         sphere.rotation.y += deltaMove.x * 0.005;
         sphere.rotation.x += deltaMove.y * 0.005;
+        autoRotate = false; // Désactive la rotation automatique lors du drag
     } else {
-        onMouseMove(event);
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(markersGroup.children);
+
+        markersGroup.children.forEach(marker => {
+            if (marker !== selectedMarker) {
+                highlightMarker(marker, false);
+            }
+        });
+
+        if (intersects.length > 0) {
+            const marker = intersects[0].object;
+            if (marker !== selectedMarker) {
+                highlightMarker(marker, true);
+                if (!isTooltipLocked) {
+                    updateTooltip(event, marker.userData);
+                }
+            }
+        } else if (!isTooltipLocked) {
+            tooltip.style.display = 'none';
+        }
     }
     previousMousePosition = { x: event.clientX, y: event.clientY };
 });
@@ -174,9 +242,28 @@ window.addEventListener('wheel', (event) => {
     camera.position.z = Math.max(1, Math.min(50, camera.position.z));
 });
 
+// Ajout d'un gestionnaire pour réactiver la rotation automatique après un délai d'inactivité
+let inactivityTimer;
+function resetInactivityTimer() {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => {
+        if (!isTooltipLocked) {
+            autoRotate = true;
+        }
+    }, 5000); // Réactive la rotation après 5 secondes d'inactivité
+}
+
+window.addEventListener('mousemove', resetInactivityTimer);
+window.addEventListener('mousedown', resetInactivityTimer);
+window.addEventListener('mouseup', resetInactivityTimer);
+window.addEventListener('wheel', resetInactivityTimer);
+
 // Animation
 function animate() {
     requestAnimationFrame(animate);
+    if (autoRotate && !isDragging) {
+        sphere.rotation.y += rotationSpeed;
+    }
     renderer.render(scene, camera);
 }
 
